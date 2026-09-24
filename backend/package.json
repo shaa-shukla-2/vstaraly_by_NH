@@ -5,6 +5,7 @@
   "description": "REST API for Vastralay by NH",
   "main": "dist/index.js",
   "scripts": {
+    "postinstall": "prisma generate",
     "dev": "tsx watch src/index.ts",
     "build": "tsc",
     "start": "node dist/index.js",
