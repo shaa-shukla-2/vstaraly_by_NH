@@ -6,10 +6,12 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 import type { CartItem, Fulfillment, MockUser, Product } from "@/types";
 import { getProductById } from "@/data/products";
+import { apiRequest } from "@/lib/api";
 
 type Toast = { message: string } | null;
 
@@ -17,6 +19,7 @@ type Store = {
   cart: CartItem[];
   wishlist: string[];
   user: MockUser | null;
+  accessToken: string | null;
   toast: Toast;
   searchOpen: boolean;
   cartOpen: boolean;
@@ -33,7 +36,7 @@ type Store = {
   toggleWishlist: (id: string) => void;
   isWishlisted: (id: string) => boolean;
   applyCoupon: (code: string) => boolean;
-  login: (user: MockUser) => void;
+  login: (user: MockUser, accessToken: string) => void;
   logout: () => void;
   notify: (message: string) => void;
   clearCart: () => void;
@@ -46,6 +49,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   const [cart, setCart] = useState<CartItem[]>([]);
   const [wishlist, setWishlist] = useState<string[]>([]);
   const [user, setUser] = useState<MockUser | null>(null);
+  const [accessToken, setAccessToken] = useState<string | null>(null);
   const [toast, setToast] = useState<Toast>(null);
   const [searchOpen, setSearchOpen] = useState(false);
   const [cartOpen, setCartOpen] = useState(false);
@@ -53,6 +57,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   const [quickView, setQuickView] = useState<Product | null>(null);
   const [coupon, setCoupon] = useState<string | null>(null);
   const [hydrated, setHydrated] = useState(false);
+  const refreshStarted = useRef(false);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -77,6 +82,27 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     }, 0);
     return () => window.clearTimeout(timer);
   }, []);
+
+  useEffect(() => {
+    if (!hydrated || !user || accessToken || refreshStarted.current) return;
+    refreshStarted.current = true;
+    let cancelled = false;
+    apiRequest<{ user: MockUser; accessToken: string }>("/auth/refresh", { method: "POST", body: "{}" })
+      .then((session) => {
+        if (!cancelled) {
+          setUser(session.user);
+          setAccessToken(session.accessToken);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setUser(null);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [hydrated, user, accessToken]);
 
   useEffect(() => {
     if (!hydrated) return;
@@ -159,6 +185,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       cart,
       wishlist,
       user,
+      accessToken,
       toast,
       searchOpen,
       cartOpen,
@@ -175,12 +202,15 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       toggleWishlist,
       isWishlisted,
       applyCoupon,
-      login: (u) => {
+      login: (u, token) => {
         setUser(u);
+        setAccessToken(token);
         notify(`Welcome back, ${u.name.split(" ")[0]}`);
       },
       logout: () => {
+        void apiRequest<{ loggedOut: boolean }>("/auth/logout", { method: "POST", body: "{}" }).catch(() => {});
         setUser(null);
+        setAccessToken(null);
         notify("Signed out");
       },
       notify,
@@ -193,6 +223,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       cart,
       wishlist,
       user,
+      accessToken,
       toast,
       searchOpen,
       cartOpen,
